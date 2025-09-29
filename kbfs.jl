@@ -1,48 +1,46 @@
-include("problem.jl")
-using .Problem
-include("vacuum_world.jl")
-using .VacuumWorld
+using ..Problem
+using ..VacuumWorld
 using Base.Enums
 using Base.Threads
 using DataStructures
 
-function kbfs(start, problem, k_threads::Int)
-    open = PriorityQueue{Any, Float64}()
-    enqueue!(open, start, start.f)
-    closed = Set()
+function kbfs(start::S, problem, k_threads::Int) where {S<:State}
+    open = BinaryMinHeap{S}()
+    push!(open, start)
+    best_g = Dict(start => start.g)
 
-    solution = nothing
+    while !isempty(open)
+        # dequeue k best states
+        states = [pop!(open) for _ in 1:min(k_threads, length(open))]
 
-    i = 0
-    while !isempty(open) && solution === nothing
-        succ_lists = [Vector{Any}() for _ in 1:k_threads] # make k result spots
-        states = [dequeue!(open) for _ in 1:min(k_threads, length(open))] # pop k or length(open) states
-        foreach(s->push!(closed, s), states) # add to closed each state
-        @threads for id in eachindex(states) # Have `states` threads expand in parallel
-            succ_lists[id] = [i for i in problem.getSuccessors(problem, states[id])]
-            # Then we need to set h and f (because we can cudafy it later)
-            for succ in succ_lists[id]
-                succ.h = problem.h(succ)
-                succ.f = succ.h + succ.g
+        succ_lists = [Vector{Any}() for _ in 1:length(states)]
+
+        @threads for id in eachindex(states)
+            succ_lists[id] = problem.getSuccessors(problem, states[id])
+        end
+
+        successors = vcat(succ_lists...)
+
+        finished_Candidates = [suc for suc in successors if problem.isFinished(suc)]
+        non_finished = filter(suc -> !problem.isFinished(suc), successors)
+
+        # insert non-goal successors
+        for suc in non_finished
+            if !haskey(best_g, suc) || suc.g < best_g[suc]
+                best_g[suc] = suc.g
+                push!(open, suc)
             end
         end
-        successors = vcat(succ_lists...) |> filter(state -> !(state in closed) && !(state in keys(open))) # Flattens and Avoids Duplicates
-        for suc in successors
-            if isempty(suc.goals) # Found a goal node
-                if solution === nothing
-                    solution = suc
-                elseif suc.f < solution.f
-                    solution = suc
-                end
-                break
-            else
-                enqueue!(open, suc, suc.f) # If not a goal node, add to open
+
+        # check if we can safely return a goal
+        if !isempty(finished_Candidates)
+            best_finished = finished_Candidates[argmin([suc for suc in finished_Candidates])]
+            if isempty(open) || best_finished.f <= first(open).f
+                return best_finished
             end
         end
     end
-    if solution !== nothing # Meaning the solution has been found
-        return solution
-    end
+
     println("No goal found")
     return nothing
 end

@@ -1,26 +1,40 @@
 module VacuumWorld
-include("problem.jl")
-using .Problem
+using ..Problem
+
+using Base.Threads
 
 @enum Direction Up Down Left Right
 
-const Position = Tuple{Int64,Int64}
+const Open = Int8(0)
+const Working = Int8(1)
+const Done = Int8(2)
+
+const Position = Tuple{Int32,Int32}
 
 direction_moves = Dict(
-    Up => (-1, 0),
-    Down => (1, 0),
-    Left => (0, -1),
-    Right => (0, 1)
+    Up => (Int32(-1), Int32(0)),
+    Down => (Int32(1), Int32(0)),
+    Left => (Int32(0), Int32(-1)),
+    Right => (Int32(0), Int32(1))
 )
 
-mutable struct VWState <: State
+struct VWState <: State
     position::Position
     goals::Set{Position}
     parent_move::Union{Tuple{VWState, Direction}, Nothing}
-    g::Int
-    h::Float64
-    f::Float64
+    g::Int32
+    h::Float32
+    f::Float32
+    successors::Vector{VWState}
+    state::Atomic{Int8}
 end
+
+VWState(position, goals, parent_move, g, h, f) = VWState(position, goals, parent_move, g, h, f, VWState[], Atomic{Int8}(Open))
+
+Base.isless(a::VWState, b::VWState) =
+    a.f == b.f ? a.g < b.g : a.f < b.f
+
+sizeof(VWState)
 
 function Base.show(io::IO, s::VWState)
     println(io, "{Position: $(s.position)")
@@ -36,14 +50,14 @@ Base.isequal(a::VWState, b::VWState) = a.position == b.position && a.goals == b.
 
 function parse_file(filename::String)
     dim = (-1, -1)
-    pos::Tuple{Int, Int} = (-1, -1)
+    pos::Tuple{Int32, Int32} = (-1, -1)
     goals = Set{Position}()
     board_lines = String[]
     line_num = 1
     for line in eachline(filename)
         if line_num == 1
             nums = split(line)
-            dim = (parse(Int, nums[1]), parse(Int, nums[2]))
+            dim = (parse(Int32, nums[1]), parse(Int32, nums[2]))
         elseif line_num == 2
             # skip 'Board:'
         else
@@ -52,7 +66,7 @@ function parse_file(filename::String)
         line_num += 1
     end
     # Build the matrix
-    mat = zeros(Int, dim...)
+    mat = zeros(Int32, dim...)
     for (i, row) in enumerate(board_lines)
         for (j, c) in enumerate(row)
             if c == '#'
@@ -81,7 +95,9 @@ function move(map::Matrix, s::VWState, direction::Direction)::VWState
     @assert isValid(map, next_position)
     goals = copy(s.goals)
     delete!(goals, next_position)
-    ss = VWState(next_position, goals, (s, direction), s.g+1, -1, -1)
+    g_val = s.g+1
+    h_val = h(next_position,goals)
+    ss = VWState(next_position, goals, (s, direction), g_val, h_val, g_val+h_val)
     return ss
 end
 
@@ -100,7 +116,10 @@ end
 expand(problem::ProblemInstance, s::VWState)::Vector{VWState} = [move(problem.otherData(), s, d) for d in get_valid_moves(problem.otherData(), s)]
 
 using DataStructures
-h(s::VWState)::Float64 = isempty(s.goals) ? 0.0 : sum(sqrt(sum((s.position .- g).^2)) for g in s.goals) # euclidean distance from '
+# h(s::VWState)::Float32 = isempty(s.goals) ? 0.0 : maximum(sqrt(sum((s.position .- g).^2)) for g in s.goals) # euclidean distance from '
+h(position, goals)::Float32 = length(goals)
+h(s::VWState)::Float32 = length(s.goals)
+isFinished(s::VWState)::Bool = isempty(s.goals)
 
 function reconstruct_path(s)
     moves = Vector{Direction}()
@@ -109,9 +128,22 @@ function reconstruct_path(s)
         push!(moves, current_state.parent_move[2])
         current_state = current_state.parent_move[1]
     end
-    moves
+    moves |> reverse
 end
 
-createVWProblem(map::Matrix) = ProblemInstance{VWState}(h, expand, ()->1, ()->map)
-export VWProblem, createVWProblem, parse_file, reconstruct_path
+function verify_path(problem, s, path::Vector{Direction})
+    currState = s
+    for (i, dir) in enumerate(path)
+        try
+            currState = move(problem.otherData(), currState, dir) # This will assert fail inside of move
+        catch
+            println("Valid until step $i")
+            return false
+        end
+    end
+    return isempty(currState.goals) ? true : false
+end
+
+createVWProblem(map::Matrix) = ProblemInstance{VWState}(h, expand, ()->1, isFinished, ()->map)
+export VWProblem, createVWProblem, parse_file, reconstruct_path, verify_path, Open, Working, Done
 end

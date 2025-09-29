@@ -6,10 +6,11 @@ struct ProblemInstance{S<:State}
     h::Function
     getSuccessors::Function
     getCost::Function
+    isFinished::Function
     otherData::Function
 end
 
-ProblemInstance(h, getSuccessors, getCost) = ProblemInstance(h, getSuccessors, getCost, x -> nothing)
+ProblemInstance(h, getSuccessors, getCost, isFinished) = ProblemInstance(h, getSuccessors, getCost, isFinished,  x -> nothing)
 
 export ProblemInstance, State
 

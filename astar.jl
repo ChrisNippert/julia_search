@@ -1,26 +1,35 @@
-include("problem.jl")
-using .Problem
-include("vacuum_world.jl")
-using .VacuumWorld
+using ..Problem
+using ..VacuumWorld
 using Base.Enums
 using Base.Threads
 using DataStructures
 
 function astar(start, problem)
-    open = PriorityQueue{Any, Float64}()
-    enqueue!(open, start, start.f)
-    closed = Set()
+    open = BinaryMinHeap{Any}()
+    best_g = Dict{Any, Float64}()   # best g-cost seen so far
+    push!(open, start)
+    best_g[start] = start.g
 
-    while !isempty(open) && !isempty(peek(open)[1].goals) # if there is stuff left and the goals have not reached 0
-        s = dequeue!(open)
-        push!(closed, s)
-        successors = [i for i in problem.getSuccessors(problem, s) if !(i in closed) && !(i in keys(open))]
-        (s.h = h(s) for s in successors)
-        (s.f = s.h+s.g for s in successors)
-        foreach(suc -> enqueue!(open, suc, suc.f), successors)
+    while !isempty(open)
+        s = pop!(open)
+        # If this path is stale, skip it
+        if s.g > best_g[s]
+            continue
+        end
+        # Goal test
+        if problem.isFinished(s)
+            return s
+        end
+
+        # Expand successors
+        successors = problem.getSuccessors(problem, s)
+        for suc in successors
+            if !haskey(best_g, suc) || suc.g < best_g[suc]
+                best_g[suc] = suc.g
+                push!(open, suc)
+            end
+        end
     end
-    if !isempty(open)
-        return peek(open)[1]
-    end
+
     return nothing
 end
