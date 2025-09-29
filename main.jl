@@ -4,6 +4,7 @@ include("vacuum_world.jl")
 using .VacuumWorld
 
 include("astar.jl")
+include("pastar.jl")
 include("kbfs.jl")
 include("spbfs.jl")
 # include("cuda_kbfs.jl")
@@ -18,13 +19,14 @@ file = "data/100/0./10/5"
 m::Matrix, s = VacuumWorld.parse_file(file)
 problem = VacuumWorld.createVWProblem(m)
 
-@time res = astar(s, problem)
+@btime res = spbfs(s, problem, 8)
+@btime res = astar(s, problem)
 # path = VacuumWorld.reconstruct_path(res)
 # VacuumWorld.verify_path(problem, s, path)
-@time res = kbfs(s, problem, 8)
+@btime res = pastar(s, problem, 4)
+@btime res = kbfs(s, problem, 8)
 # path = VacuumWorld.reconstruct_path(res)
 # VacuumWorld.verify_path(problem, s, path)
-@time res = spbfs(s, problem, 8)
 # path = VacuumWorld.reconstruct_path(res)
 # VacuumWorld.verify_path(problem, s, path)
 

@@ -1,19 +1,18 @@
 using ..Problem
 using ..VacuumWorld
 using Base.Enums
-using Base.Threads
 using DataStructures
 
-function astar(start, problem)
-    open = BinaryMinHeap{Any}()
-    best_g = Dict{Any, Float64}()   # best g-cost seen so far
+function astar(start::State, problem)
+    open = BinaryMinHeap{State}()
+    closed = Dict{State, Float64}()   # best g-cost seen so far
     push!(open, start)
-    best_g[start] = start.g
+    closed[start] = start.g
 
     while !isempty(open)
         s = pop!(open)
         # If this path is stale, skip it
-        if s.g > best_g[s]
+        if s.g > closed[s]
             continue
         end
         # Goal test
@@ -24,8 +23,8 @@ function astar(start, problem)
         # Expand successors
         successors = problem.getSuccessors(problem, s)
         for suc in successors
-            if !haskey(best_g, suc) || suc.g < best_g[suc]
-                best_g[suc] = suc.g
+            if !haskey(closed, suc) || suc.g < closed[suc]
+                closed[suc] = suc.g
                 push!(open, suc)
             end
         end

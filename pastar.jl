@@ -1,27 +1,60 @@
-include("problem.jl")
-using .Problem
-include("vacuum_world.jl")
-using .VacuumWorld
+using ..Problem
+using ..VacuumWorld
 using Base.Enums
 using Base.Threads
 using DataStructures
 
-function astar(start, problem)
-    lock = ReentrantLock()
-    open = PriorityQueue{Any, Float64}()
-    enqueue!(open, start, start.f)
-    closed = Set()
+function pastar(start, problem, thread_count)
+    l = ReentrantLock()
 
-    while !isempty(open) && !isempty(peek(open)[1].goals) # if there is stuff left and the goals have not reached 0
-        s = dequeue!(open)
-        push!(closed, s)
-        successors = [i for i in problem.getSuccessors(problem, s) if !(i in closed) && !(i in keys(open))]
-        (s.h = h(s) for s in successors)
-        (s.f = s.h+s.g for s in successors)
-        foreach(suc -> enqueue!(open, suc, suc.f), successors)
+    open = BinaryMinHeap{State}()
+    closed = Dict{State, Float64}()   # best g-cost seen so far
+    push!(open, start)
+    closed[start] = start.g
+
+    doStop = Atomic{Bool}(false)
+
+    best = nothing
+
+    @threads for _ in 1:thread_count-1
+        while !doStop[]
+            s = lock(l) do # Apparently the "do" is actually an anonymous function
+                if isempty(open)
+                    return nothing
+                end
+                pop!(open)
+            end
+            if s === nothing
+                continue
+            end
+            # If this path is stale, skip it
+            if s.g > closed[s]
+                continue
+            end
+            # Goal test
+            if problem.isFinished(s)
+                lock(l) do
+                    if best === nothing
+                        best = s
+                    elseif s.g < best.g
+                        best = s
+                    end
+                    doStop[] = true
+                end
+            end
+
+            # Expand successors
+            successors = problem.getSuccessors(problem, s)
+            for suc in successors
+                lock(l) do
+                    if !haskey(closed, suc) || suc.g < closed[suc]
+                        closed[suc] = suc.g
+                        push!(open, suc)
+                    end
+                end
+            end
+        end
     end
-    if !isempty(open)
-        return peek(open)[1]
-    end
-    return nothing
+
+    return best
 end
