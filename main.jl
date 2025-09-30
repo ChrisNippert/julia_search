@@ -19,7 +19,7 @@ file = "data/100/0./10/5"
 m::Matrix, s = VacuumWorld.parse_file(file)
 problem = VacuumWorld.createVWProblem(m)
 
-@btime res = spbfs(s, problem, 8)
+@btime res = spbfs(s, problem, 7)
 @btime res = astar(s, problem)
 # path = VacuumWorld.reconstruct_path(res)
 # VacuumWorld.verify_path(problem, s, path)

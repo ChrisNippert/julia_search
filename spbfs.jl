@@ -15,6 +15,7 @@ end
 function speculate(proxy_ref::Ref{Vector{State}}, problem, stop_signal)
     # each thread grabs from the proxy list and speculates
     while !stop_signal[]
+        # println("Thread $(threadid()) doing stuff")
         proxy_list = proxy_ref[] # immutable snapshot of the list
         for node in proxy_list
             success = atomic_cas!(node.state, Open, Working) == Open # Attempt to claim node
@@ -26,11 +27,11 @@ function speculate(proxy_ref::Ref{Vector{State}}, problem, stop_signal)
         end
         yield()
     end
+    # println("Thread $(threadid()) stopping")
 end
 
 function spbfs(start, problem, thread_count)
-    println("Starting Search")
-
+    println("Starting")
     open = BinaryMinHeap{State}()
     closed_g = Dict{State, Float64}()   # best g-cost seen so far
     push!(open, start)
@@ -39,8 +40,8 @@ function spbfs(start, problem, thread_count)
     manual = 0
 
     #####    
-    stop_signal = Threads.Atomic{Bool}(false) # set atomic to false
-    proxy_ref = Ref(Vector{State}())
+    stop_signal = Atomic{Bool}(false) # set atomic to false
+    proxy_ref = Ref(Vector{State}()) # Immutable upon construction and able to have concurrent reads, but not concurrent writes
     workers = [@spawn speculate(proxy_ref, problem, stop_signal) for _ in 1:thread_count-1]
     #####
 
@@ -51,6 +52,7 @@ function spbfs(start, problem, thread_count)
         
         # Goal test
         if problem.isFinished(s)
+            println("Success!")
             stop_signal[] = true
             wait.(workers)   # waits for them to exit
             println("Speculated: $speculated")
@@ -64,6 +66,7 @@ function spbfs(start, problem, thread_count)
         if success # prevents concurrent access to node
             successors = problem.getSuccessors(problem, s)
             append!(s.successors, successors)
+            s.state[] = Done
             manual += 1
         else 
             # wait for state to be Done
@@ -73,6 +76,8 @@ function spbfs(start, problem, thread_count)
             speculated += 1
         end
         #####
+
+        # s should have successors
 
         successors = s.successors
         for suc in successors
