@@ -5,6 +5,7 @@ using Base.Threads
 using DataStructures
 
 function pastar(start, problem, thread_count)
+    println("Starting")
     l = ReentrantLock()
 
     open = BinaryMinHeap{State}()
@@ -13,6 +14,7 @@ function pastar(start, problem, thread_count)
     closed[start] = start.g
 
     doStop = Atomic{Bool}(false)
+    expansions = 0
 
     best = nothing
 
@@ -22,6 +24,7 @@ function pastar(start, problem, thread_count)
                 if isempty(open)
                     return nothing
                 end
+                expansions += 1
                 pop!(open)
             end
             if s === nothing
@@ -56,5 +59,6 @@ function pastar(start, problem, thread_count)
         end
     end
 
+    println("$expansions")
     return best
 end

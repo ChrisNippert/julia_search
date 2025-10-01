@@ -6,17 +6,25 @@ using DataStructures
 
 const PROXY_CAPACITY = 8
 
-function preview_window(open::BinaryMinHeap, K::Int)
+mutable struct AtomicWrapper{T}
+    @atomic x::T
+end
+
+read(avec::AtomicWrapper) = @atomic :acquire avec.x
+write(avec::AtomicWrapper, val) = @atomic :release avec.x = val
+
+function preview_window(open::BinaryMinHeap, K::Int)::Vector{State}
     # It wraps a vector `open.valtree`
     # We can just grab the first K elements
     return [open.valtree[i] for i in 1:min(K, length(open))]
 end
 
-function speculate(proxy_ref::Ref{Vector{State}}, problem, stop_signal)
+function speculate(proxy::AtomicWrapper{Vector{State}}, problem, stop_signal)
     # each thread grabs from the proxy list and speculates
     while !stop_signal[]
-        # println("Thread $(threadid()) doing stuff")
-        proxy_list = proxy_ref[] # immutable snapshot of the list
+        # println("Thread $(threadid()): doing Stuff")
+        atomic_fence()
+        proxy_list = read(proxy) # immutable snapshot of the list
         for node in proxy_list
             success = atomic_cas!(node.state, Open, Working) == Open # Attempt to claim node
             if success
@@ -41,8 +49,8 @@ function spbfs(start, problem, thread_count)
 
     #####    
     stop_signal = Atomic{Bool}(false) # set atomic to false
-    proxy_ref = Ref(Vector{State}()) # Immutable upon construction and able to have concurrent reads, but not concurrent writes
-    workers = [@spawn speculate(proxy_ref, problem, stop_signal) for _ in 1:thread_count-1]
+    proxy = AtomicWrapper(State[]) # Immutable upon construction and able to have concurrent reads, but not concurrent writes
+    workers = [@spawn speculate(proxy, problem, stop_signal) for _ in 1:thread_count-1]
     #####
 
     while !isempty(open)
@@ -55,8 +63,8 @@ function spbfs(start, problem, thread_count)
             println("Success!")
             stop_signal[] = true
             wait.(workers)   # waits for them to exit
-            println("Speculated: $speculated")
-            println("Manual: $manual")
+            # println("Speculated: $speculated")
+            # println("Manual: $manual")
             return s
         end
 
@@ -86,7 +94,8 @@ function spbfs(start, problem, thread_count)
                 push!(open, suc)
                 #####
                 # update the proxy_ref for the threads to view
-                proxy_ref[] = preview_window(open, PROXY_CAPACITY)
+                atomic_fence()
+                write(proxy, preview_window(open, PROXY_CAPACITY))
                 #####
             end
         end

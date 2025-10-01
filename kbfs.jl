@@ -9,9 +9,13 @@ function kbfs(start::S, problem, k_threads::Int) where {S<:State}
     push!(open, start)
     best_g = Dict(start => start.g)
 
+    expansions = 0
+
     while !isempty(open)
         # dequeue k best states
         states = [pop!(open) for _ in 1:min(k_threads, length(open))]
+
+        expansions += 1
 
         succ_lists = [Vector{Any}() for _ in 1:length(states)]
 
@@ -36,11 +40,13 @@ function kbfs(start::S, problem, k_threads::Int) where {S<:State}
         if !isempty(finished_Candidates)
             best_finished = finished_Candidates[argmin([suc for suc in finished_Candidates])]
             if isempty(open) || best_finished.f <= first(open).f
+                println("$expansions")
                 return best_finished
             end
         end
     end
 
+    println("$expansions")
     println("No goal found")
     return nothing
 end

@@ -18,6 +18,9 @@ direction_moves = Dict(
     Right => (Int32(0), Int32(1))
 )
 
+# Make IDs and have tertiary sort by ID (FIFO vs FILO)
+# Split state from search node.
+
 struct VWState <: State
     position::Position
     goals::Set{Position}

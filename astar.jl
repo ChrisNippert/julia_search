@@ -4,6 +4,7 @@ using Base.Enums
 using DataStructures
 
 function astar(start::State, problem)
+    expansions = 0
     open = BinaryMinHeap{State}()
     closed = Dict{State, Float64}()   # best g-cost seen so far
     push!(open, start)
@@ -15,8 +16,12 @@ function astar(start::State, problem)
         if s.g > closed[s]
             continue
         end
+
+        expansions += 1
+
         # Goal test
         if problem.isFinished(s)
+            # println(expansions)
             return s
         end
 
@@ -29,6 +34,6 @@ function astar(start::State, problem)
             end
         end
     end
-
+    # println(expansions)
     return nothing
 end
